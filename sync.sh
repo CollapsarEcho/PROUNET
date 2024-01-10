@@ -7,7 +7,7 @@ git add .
 echo "Enter commit message: "
 
 git commit -m "$(date)"
-git push origin main
+git push origin master
 echo "************************************"
 echo "Changes added and committed!"
 echo "************************************"
