@@ -16,7 +16,7 @@
 
 #    contact: David Bonekamp, MD, d.bonekamp@dkfz-heidelberg.de
 
-__author__  = "German Cancer Research Center (DKFZ)"
+__author__ = "German Cancer Research Center (DKFZ)"
 
 import pandas as pd
 import os
@@ -31,50 +31,62 @@ import torch
 import shutil
 import nrrd
 from batchgenerators.augmentations.crop_and_pad_augmentations import center_crop
-from batchgenerators.transforms.sample_normalization_transforms import CutOffOutliersTransform
+from batchgenerators.transforms.sample_normalization_transforms import (
+    CutOffOutliersTransform,
+)
 from batchgenerators.augmentations.normalizations import cut_off_outliers
 
 
 class CrossEntropyLoss2d(nn.Module):
     def __init__(self, weight=None, size_average=True, reduce=True):
         super(CrossEntropyLoss2d, self).__init__()
-        self.nll_loss = nn.NLLLoss2d(weight=weight, size_average=size_average, reduce=reduce)
+        self.nll_loss = nn.NLLLoss2d(
+            weight=weight, size_average=size_average, reduce=reduce
+        )
 
     def forward(self, inputs, targets):
         return self.nll_loss(F.log_softmax(inputs), targets)
 
 
 def ToTensor(batch):
+    image, label = batch["data"], batch["seg"]
 
-    image, label = batch['data'], batch['seg']
+    data = torch.from_numpy(image[:, :, :, :])
+    seg = torch.from_numpy(label[:, 0, :, :])
+    seg_T2 = torch.from_numpy(label[:, 1, :, :])
 
-    data = torch.from_numpy(image[:,:,:,:])
-    seg = torch.from_numpy(label[:,0,:,:])
-    seg_T2 = torch.from_numpy(label[:,1,:,:])
-
-    return {'data': data,
-            'seg': seg,
-            'seg_T2': seg_T2}
+    return {"data": data, "seg": seg, "seg_T2": seg_T2}
 
 
-
-def train(train_loader, model, optimizer, criterion_ADC, criterion_T2, final_transform, workers, seed,
-          training_batches):
-
+def train(
+    train_loader,
+    model,
+    optimizer,
+    criterion_ADC,
+    criterion_T2,
+    final_transform,
+    workers,
+    seed,
+    training_batches,
+):
     train_losses = AverageMeter()
     np.random.seed(seed)
     seeds = np.random.choice(seed, workers, False, None)
     model.train()
-    multithreaded_generator = MultiThreadedAugmenter(train_loader, final_transform, workers, 2, seeds=seeds)
+    multithreaded_generator = MultiThreadedAugmenter(
+        train_loader, final_transform, workers, 2, seeds=seeds
+    )
     torch.cuda.empty_cache()
 
     for i in range(training_batches):
-        print('Batch: [{0}/{1}]'.format(i +1, training_batches))
+        print("Batch: [{0}/{1}]".format(i + 1, training_batches))
         batch = multithreaded_generator.next()
         TensorBatch = ToTensor(batch)
-        target = TensorBatch['seg'].cuda()
-        target_T2 = TensorBatch['seg_T2'].cuda()
-        input_var = torch.autograd.Variable(TensorBatch['data'], requires_grad=True).cuda(async=True)
+        target = TensorBatch["seg"].cuda()
+        target_T2 = TensorBatch["seg_T2"].cuda()
+        input_var = torch.autograd.Variable(
+            TensorBatch["data"], requires_grad=True
+        ).cuda(non_blocking=True)
         input_var = input_var.float()
         target_var = torch.autograd.Variable(target)
         target_var = target_var.long()
@@ -84,35 +96,48 @@ def train(train_loader, model, optimizer, criterion_ADC, criterion_T2, final_tra
         output = model(input_var)
         loss_ADC = criterion_ADC(output, target_var)
         loss_T2 = criterion_T2(output, target_var_T2)
-        loss = (loss_ADC + loss_T2) / 2.
+        loss = (loss_ADC + loss_T2) / 2.0
         loss.backward()
         optimizer.step()
         train_losses.update(loss.item())
-        print 'train_loss', loss.item()
+        print("train_loss", loss.item())
 
     torch.cuda.empty_cache()
 
     return train_losses.avg
 
 
-
-def validate(val_loader, model, epoch, criterion_ADC, criterion_T2 ,split_ixs, Center_Crop, workers, seed, folder_name,
-             test=False):
-
+def validate(
+    val_loader,
+    model,
+    epoch,
+    criterion_ADC,
+    criterion_T2,
+    split_ixs,
+    Center_Crop,
+    workers,
+    seed,
+    folder_name,
+    test=False,
+):
     val_losses = AverageMeter()
     seeds = np.random.choice(seed, workers, False, None)
     torch.cuda.empty_cache()
     model.eval()
-    multithreaded_generator = MultiThreadedAugmenter(val_loader, Center_Crop, workers, 2, seeds=seeds)
+    multithreaded_generator = MultiThreadedAugmenter(
+        val_loader, Center_Crop, workers, 2, seeds=seeds
+    )
 
     for i in range(len(split_ixs)):
         patient = split_ixs[i]
-        print 'patient', patient
+        print("patient", patient)
         batch = multithreaded_generator.next()
         TensorBatch = ToTensor(batch)
-        target = TensorBatch['seg'].cuda()
-        target_T2 = TensorBatch['seg_T2'].cuda()
-        input_var = torch.autograd.Variable(TensorBatch['data'], volatile=True).cuda(async=True)
+        target = TensorBatch["seg"].cuda()
+        target_T2 = TensorBatch["seg_T2"].cuda()
+        input_var = torch.autograd.Variable(TensorBatch["data"], volatile=True).cuda(
+            non_blocking=True
+        )
         input_var = input_var.float()
         target_var = torch.autograd.Variable(target, volatile=True)
         target_var = target_var.long()
@@ -122,12 +147,12 @@ def validate(val_loader, model, epoch, criterion_ADC, criterion_T2 ,split_ixs, C
         probs = F.softmax(output)
         loss_ADC = criterion_ADC(output, target_var)
         loss_T2 = criterion_T2(output, target_var_T2)
-        loss = (loss_ADC + loss_T2) / 2.
+        loss = (loss_ADC + loss_T2) / 2.0
         val_losses.update(loss.item())
         if test == False:
-            print 'val_loss', loss.item()
+            print("val_loss", loss.item())
         else:
-            print 'test_loss', loss.item()
+            print("test_loss", loss.item())
 
         image = (input_var.data).cpu().numpy()
         Mprobs = (probs.data).cpu().numpy()
@@ -156,16 +181,18 @@ def validate(val_loader, model, epoch, criterion_ADC, criterion_T2 ,split_ixs, C
 
         if test == False:
             try:
-                os.mkdir(folder_name + '/Val_Images')
+                os.mkdir(folder_name + "/Val_Images")
             except OSError:
                 pass
 
             try:
-                os.mkdir(folder_name + '/Val_Images/Epoch_{}'.format(epoch))
+                os.mkdir(folder_name + "/Val_Images/Epoch_{}".format(epoch))
             except OSError:
                 pass
 
-            save_images_to = folder_name + '/Val_Images/Epoch_{}/Patient_{}'.format(epoch, patient)
+            save_images_to = folder_name + "/Val_Images/Epoch_{}/Patient_{}".format(
+                epoch, patient
+            )
             try:
                 os.mkdir(save_images_to)
             except OSError:
@@ -173,16 +200,15 @@ def validate(val_loader, model, epoch, criterion_ADC, criterion_T2 ,split_ixs, C
 
         else:
             try:
-                os.mkdir(folder_name + '/Test_Images')
+                os.mkdir(folder_name + "/Test_Images")
             except OSError:
                 pass
 
-            save_images_to = folder_name + '/Test_Images/Patient_{}'.format(patient)
+            save_images_to = folder_name + "/Test_Images/Patient_{}".format(patient)
             try:
                 os.mkdir(save_images_to)
             except OSError:
                 pass
-
 
         ADCimage = image[:, 0, :, :]
         BVALimage = image[:, 1, :, :]
@@ -201,30 +227,30 @@ def validate(val_loader, model, epoch, criterion_ADC, criterion_T2 ,split_ixs, C
         probsPRO = sitk.GetImageFromArray(probability_map_pro)
         probsTU = sitk.GetImageFromArray(probability_map_tu)
 
-        save(TumorOut, save_images_to + '/Tumor_Output.nrrd', Mask=True)
-        save(ProstateOut, save_images_to + '/Prostate_Output.nrrd', Mask=True)
-        save(ADCimg, save_images_to + '/ADCImage.nrrd')
-        save(BVALimg, save_images_to + '/BVALImage.nrrd')
-        save(T2img, save_images_to + '/T2Image.nrrd')
+        save(TumorOut, save_images_to + "/Tumor_Output.nrrd", Mask=True)
+        save(ProstateOut, save_images_to + "/Prostate_Output.nrrd", Mask=True)
+        save(ADCimg, save_images_to + "/ADCImage.nrrd")
+        save(BVALimg, save_images_to + "/BVALImage.nrrd")
+        save(T2img, save_images_to + "/T2Image.nrrd")
 
-        save(seg, save_images_to + '/Label.nrrd', Mask=True)
-        save(seg_T2, save_images_to + '/Label_T2.nrrd', Mask=True)
-        save(pro, save_images_to + '/Pro_Label.nrrd', Mask=True)
-        save(pro_T2, save_images_to + '/Pro_Label_T2.nrrd', Mask=True)
-        save(probsBack, save_images_to + '/ProbabilityMapBack.nrrd')
-        save(probsTU, save_images_to + '/ProbabilityMapTU.nrrd')
-        save(probsPRO, save_images_to + '/ProbabilityMapPRO.nrrd')
+        save(seg, save_images_to + "/Label.nrrd", Mask=True)
+        save(seg_T2, save_images_to + "/Label_T2.nrrd", Mask=True)
+        save(pro, save_images_to + "/Pro_Label.nrrd", Mask=True)
+        save(pro_T2, save_images_to + "/Pro_Label_T2.nrrd", Mask=True)
+        save(probsBack, save_images_to + "/ProbabilityMapBack.nrrd")
+        save(probsTU, save_images_to + "/ProbabilityMapTU.nrrd")
+        save(probsPRO, save_images_to + "/ProbabilityMapPRO.nrrd")
         torch.cuda.empty_cache()
 
     return val_losses.avg
 
 
 def clear_image_data(folder_name, best_epoch, epoch):
-    for e in range(epoch+1):
+    for e in range(epoch + 1):
         if e == best_epoch:
-            print('best epoch')
+            print("best epoch")
         else:
-            path_name = folder_name + '/Val_Images/Epoch_{}/'.format(e)
+            path_name = folder_name + "/Val_Images/Epoch_{}/".format(e)
             try:
                 shutil.rmtree(path_name)
             except OSError:
@@ -236,7 +262,6 @@ def save_checkpoint(state, filename):
 
 
 class AverageMeter(object):
-
     def __init__(self):
         self.reset()
 
@@ -254,16 +279,14 @@ class AverageMeter(object):
 
 
 def adjust_learning_rate(optimizer, arg_lr, epoch):
-
-    lr = np.float32(arg_lr * 0.98 ** epoch)
+    lr = np.float32(arg_lr * 0.98**epoch)
 
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group["lr"] = lr
     return optimizer, lr
 
 
 def resample(fixed, target_resample_resolution, Mask=False):
-
     if Mask == True:
         Interpolator = sitk.sitkNearestNeighbor
     else:
@@ -291,10 +314,25 @@ def resample(fixed, target_resample_resolution, Mask=False):
 
 
 class BatchGenerator(DataLoaderBase):
-
-    def __init__(self, data, BATCH_SIZE, split_idx, seed, ADC_mean, ADC_std, BVAL_mean, BVAL_std, T2_mean, T2_std,
-                 ProbabilityTumorSlices=None, epoch=None, test=False):
-        super(self.__class__, self).__init__(data=data, BATCH_SIZE=BATCH_SIZE, seed=False, num_batches=None)
+    def __init__(
+        self,
+        data,
+        BATCH_SIZE,
+        split_idx,
+        seed,
+        ADC_mean,
+        ADC_std,
+        BVAL_mean,
+        BVAL_std,
+        T2_mean,
+        T2_std,
+        ProbabilityTumorSlices=None,
+        epoch=None,
+        test=False,
+    ):
+        super(self.__class__, self).__init__(
+            data=data, BATCH_SIZE=BATCH_SIZE, seed=False, num_batches=None
+        )
         self._split_idx = split_idx
         self._ProbabilityTumorSlices = ProbabilityTumorSlices
         self._epoch = epoch
@@ -310,37 +348,37 @@ class BatchGenerator(DataLoaderBase):
         self.T2_std = T2_std
 
     def generate_train_batch(self):
-
         channels_img = 3
         channels_label = 2
         img_size = 200
 
         if self.test == True:
-
             img = np.empty((self.BATCH_SIZE, channels_img, img_size, img_size))
             label = np.empty((self.BATCH_SIZE, channels_label, img_size, img_size))
 
             if self._count < len(self._split_idx):
                 idx = self._split_idx[self._count]
-                z_dim = self._data[idx]['image'].shape[3]
+                z_dim = self._data[idx]["image"].shape[3]
                 self.BATCH_SIZE = z_dim
 
-                custom_batch = (z_dim / self.BATCH_SIZE)*self.BATCH_SIZE
-
+                custom_batch = (z_dim / self.BATCH_SIZE) * self.BATCH_SIZE
 
                 if self._count < len(self._split_idx):
-                    img = self._data[idx]['image']
-                    img = img.transpose((3,0,1,2))
-                    label = self._data[idx]['label']
-                    label = label.transpose((3,0,1,2))
+                    img = self._data[idx]["image"]
+                    img = img.transpose((3, 0, 1, 2))
+                    label = self._data[idx]["label"]
+                    label = label.transpose((3, 0, 1, 2))
                     self._count += 1
-
 
                 else:
                     for b in range(self.BATCH_SIZE):
                         if self._s < custom_batch:
-                            img[b, :, :, :] = self._data[idx]['image'][:channels_img, :, :, self._s]
-                            label[b, :, :, :] = self._data[idx]['label'][:channels_label, :, :, self._s]
+                            img[b, :, :, :] = self._data[idx]["image"][
+                                :channels_img, :, :, self._s
+                            ]
+                            label[b, :, :, :] = self._data[idx]["label"][
+                                :channels_label, :, :, self._s
+                            ]
                             self._s += 1
                         else:
                             self._s = 0
@@ -348,8 +386,12 @@ class BatchGenerator(DataLoaderBase):
                             self._batches_generated = self._count
                             if self._count < len(self._split_idx):
                                 idx = self._split_idx[self._batches_generated]
-                                img[b, :, :, :] = self._data[idx]['image'][:channels_img, :, :, self._s]
-                                label[b, :, :, :] = self._data[idx]['label'][:channels_label, :, :, self._s]
+                                img[b, :, :, :] = self._data[idx]["image"][
+                                    :channels_img, :, :, self._s
+                                ]
+                                label[b, :, :, :] = self._data[idx]["label"][
+                                    :channels_label, :, :, self._s
+                                ]
                                 self._s += 1
                             else:
                                 pass
@@ -358,19 +400,16 @@ class BatchGenerator(DataLoaderBase):
                 pass
 
         else:
-
             idx = np.random.choice(self._split_idx, self.BATCH_SIZE, False, None)
             img = np.empty((self.BATCH_SIZE, channels_img, img_size, img_size))
             label = np.empty((self.BATCH_SIZE, channels_label, img_size, img_size))
 
             for b in range(self.BATCH_SIZE):
-
                 if self._ProbabilityTumorSlices is not None:
-                    LabelData = self._data[idx[b]]['label']
-                    z_dim = self._data[idx[b]]['image'].shape[3]
+                    LabelData = self._data[idx[b]]["label"]
+                    z_dim = self._data[idx[b]]["image"].shape[3]
                     CancerSlices = []
                     for Slice in range(z_dim):
-
                         bool = np.where(LabelData[:, :, :, Slice] == 2, True, False)
 
                         if bool.any() == True:
@@ -382,62 +421,77 @@ class BatchGenerator(DataLoaderBase):
                         totalOtherSliceProb = float(1) - float(totalTumorSliceProb)
 
                         ProbabilityMap = np.array(np.zeros(z_dim))
-                        ProbabilityMap[CancerSlices] = self._ProbabilityTumorSlices / float(len(CancerSlices))
+                        ProbabilityMap[
+                            CancerSlices
+                        ] = self._ProbabilityTumorSlices / float(len(CancerSlices))
 
                         NoTumorSlices = float(z_dim - len(CancerSlices))
                         ProbPerNoTumorSlice = totalOtherSliceProb / NoTumorSlices
 
-                        ProbabilityMap = [ProbPerNoTumorSlice if g == 0 else g for g in ProbabilityMap]
+                        ProbabilityMap = [
+                            ProbPerNoTumorSlice if g == 0 else g for g in ProbabilityMap
+                        ]
 
                     else:
                         ProbabilityMap = np.zeros(z_dim)
-                        ProbabilityMap = [float(1) / float(z_dim) if g == 0 else g for g in ProbabilityMap]
+                        ProbabilityMap = [
+                            float(1) / float(z_dim) if g == 0 else g
+                            for g in ProbabilityMap
+                        ]
 
                 else:
                     ProbabilityMap = np.zeros(z_dim)
-                    ProbabilityMap = [float(1) / float(z_dim) if g == 0 else g for g in ProbabilityMap]
+                    ProbabilityMap = [
+                        float(1) / float(z_dim) if g == 0 else g for g in ProbabilityMap
+                    ]
 
                 randint = np.random.choice(z_dim, p=ProbabilityMap)
 
-                img[b, :, :, :] = self._data[idx[b]]['image'][:, :, :, randint]
-                label[b, :, :, :] = self._data[idx[b]]['label'][:, :, :, randint]
+                img[b, :, :, :] = self._data[idx[b]]["image"][:, :, :, randint]
+                label[b, :, :, :] = self._data[idx[b]]["label"][:, :, :, randint]
 
         # cut off outliers before image normalization
 
         img = np.nan_to_num(img)
-        img = cut_off_outliers(img, percentile_lower=0.2, percentile_upper=99.8, per_channel=True)
+        img = cut_off_outliers(
+            img, percentile_lower=0.2, percentile_upper=99.8, per_channel=True
+        )
 
-        img[:, 0, :, :] = (img[:, 0, :, :] - np.float(self.ADC_mean)) / np.float(self.ADC_std)
-        img[:, 1, :, :] = (img[:, 1, :, :] - np.float(self.BVAL_mean)) / np.float(self.BVAL_std)
-        img[:, 2, :, :] = (img[:, 2, :, :] - np.float(self.T2_mean)) / np.float(self.T2_std)
-
-
+        img[:, 0, :, :] = (img[:, 0, :, :] - np.float(self.ADC_mean)) / np.float(
+            self.ADC_std
+        )
+        img[:, 1, :, :] = (img[:, 1, :, :] - np.float(self.BVAL_mean)) / np.float(
+            self.BVAL_std
+        )
+        img[:, 2, :, :] = (img[:, 2, :, :] - np.float(self.T2_mean)) / np.float(
+            self.T2_std
+        )
 
         img = np.float32(img)
 
         data_dict = {"data": img, "seg": label}
 
-
         return data_dict
 
 
-
-
-def CreateTrainValTestSplit(HistoFile_path, num_splits, num_val_folds, num_test_folds, seed):
-
+def CreateTrainValTestSplit(
+    HistoFile_path, num_splits, num_val_folds, num_test_folds, seed
+):
     np.random.seed(seed)
 
     HistoFile = pd.read_csv(HistoFile_path)
 
     # calculate random split assignments of the subjects
-    IDs = HistoFile.Master_ID.values # Patient no.
+    IDs = HistoFile.Master_ID.values  # Patient no.
     unique_IDs = np.unique(IDs)
 
     num_subjects = len(unique_IDs)
     splits = -1 * np.ones(num_subjects)
     s_per_split = num_subjects // num_splits
     # assign an equivalent # subjects to the splits
-    assign = np.random.choice(range(num_subjects), size=(num_splits, s_per_split), replace=False)
+    assign = np.random.choice(
+        range(num_subjects), size=(num_splits, s_per_split), replace=False
+    )
     for split in range(num_splits):
         for subj in range(s_per_split):
             splits[assign[split, subj]] = split
@@ -456,7 +510,9 @@ def CreateTrainValTestSplit(HistoFile_path, num_splits, num_val_folds, num_test_
 
     train_folds = [f for f in range(num_splits - num_val_folds - num_test_folds)]
     train_ixs_lists = [subjects[fold] for fold in train_folds]
-    train_ixs = [ix for ixs in train_ixs_lists for ix in ixs]  # flatten the list of lists
+    train_ixs = [
+        ix for ixs in train_ixs_lists for ix in ixs
+    ]  # flatten the list of lists
 
     val_folds = [f for f in range(num_splits - num_test_folds) if f not in train_folds]
     val_ixs_lists = [subjects[fold] for fold in val_folds]
@@ -466,12 +522,10 @@ def CreateTrainValTestSplit(HistoFile_path, num_splits, num_val_folds, num_test_
     test_ixs_lists = [subjects[fold] for fold in test_folds]
     test_ixs = [ix for ixs in test_ixs_lists for ix in ixs]  # flatten the list of lists
 
-
     return train_ixs, val_ixs, test_ixs
 
 
 def get_class_frequencies(Data, train_idx, patch_size):
-
     Tumor_frequencie_ADC = 0
     Prostate_frequencie_ADC = 0
     Background_frequencie_ADC = 0
@@ -489,10 +543,10 @@ def get_class_frequencies(Data, train_idx, patch_size):
 
     for i in range(len(train_idx)):
         idx = train_idx[i]
-        Data_class = Data[idx]['label']
-        Data_image = Data[idx]['image']
+        Data_class = Data[idx]["label"]
+        Data_image = Data[idx]["image"]
 
-        center_crop_dimensions = ((patch_size[0], patch_size[1]))
+        center_crop_dimensions = (patch_size[0], patch_size[1])
 
         Data_class_Label = center_crop(Data_class, center_crop_dimensions)
         Data_class_Label = Data_class_Label[0]
@@ -501,15 +555,19 @@ def get_class_frequencies(Data, train_idx, patch_size):
         Data_image_cropped = Data_image_cropped[0]
 
         Data_image_cropped = np.nan_to_num(Data_image_cropped)
-        Data_image_cropped = cut_off_outliers(Data_image_cropped, percentile_lower=0.2, percentile_upper=99.8, per_channel=True)
+        Data_image_cropped = cut_off_outliers(
+            Data_image_cropped,
+            percentile_lower=0.2,
+            percentile_upper=99.8,
+            per_channel=True,
+        )
 
-        T2_mean += np.mean(Data_image_cropped[2,:,:,:])
-        T2_std += np.std(Data_image_cropped[2,:,:,:])
-        ADC_mean += np.mean(Data_image_cropped[0,:,:,:])
-        ADC_std += np.std(Data_image_cropped[0,:,:,:])
-        BVAL_mean += np.mean(Data_image_cropped[1,:,:,:])
-        BVAL_std += np.std(Data_image_cropped[1,:,:,:])
-
+        T2_mean += np.mean(Data_image_cropped[2, :, :, :])
+        T2_std += np.std(Data_image_cropped[2, :, :, :])
+        ADC_mean += np.mean(Data_image_cropped[0, :, :, :])
+        ADC_std += np.std(Data_image_cropped[0, :, :, :])
+        BVAL_mean += np.mean(Data_image_cropped[1, :, :, :])
+        BVAL_std += np.std(Data_image_cropped[1, :, :, :])
 
         Tumor_frequencie_ADC += np.sum(Data_class_Label[0, :, :, :] == 2)
         Prostate_frequencie_ADC += np.sum(Data_class_Label[0, :, :, :] == 1)
@@ -526,18 +584,28 @@ def get_class_frequencies(Data, train_idx, patch_size):
     BVAL_mean = BVAL_mean / np.float(len(train_idx))
     BVAL_std = BVAL_std / np.float(len(train_idx))
 
-    return Tumor_frequencie_ADC, Prostate_frequencie_ADC, Background_frequencie_ADC,\
-           Tumor_frequencie_T2, Prostate_frequencie_T2, Background_frequencie_T2, ADC_mean, ADC_std, BVAL_mean, \
-           BVAL_std, T2_mean, T2_std
+    return (
+        Tumor_frequencie_ADC,
+        Prostate_frequencie_ADC,
+        Background_frequencie_ADC,
+        Tumor_frequencie_T2,
+        Prostate_frequencie_T2,
+        Background_frequencie_T2,
+        ADC_mean,
+        ADC_std,
+        BVAL_mean,
+        BVAL_std,
+        T2_mean,
+        T2_std,
+    )
 
 
 def get_oversampling(Data, train_idx, Batch_Size, patch_size):
-
     IDs = sorted(train_idx)
 
     Total_Patients = len(IDs)
 
-    print 'Total_Patients', Total_Patients
+    print("Total_Patients", Total_Patients)
 
     Tumor_slices = 0
     Prostate_slices = 0
@@ -548,20 +616,20 @@ def get_oversampling(Data, train_idx, Batch_Size, patch_size):
     for i in range(len(IDs)):
         idx = IDs[i]
         print(idx)
-        z_Dim = (Data[idx]['label']).shape
-        Data_over = Data[idx]['label']
+        z_Dim = (Data[idx]["label"]).shape
+        Data_over = Data[idx]["label"]
 
-        center_crop_dimensions = ((patch_size[0], patch_size[1]))
+        center_crop_dimensions = (patch_size[0], patch_size[1])
         Data_over_cropped = center_crop(Data_over, center_crop_dimensions)
         Data_over_cropped = Data_over_cropped[0]
 
         for f in range(z_Dim[3]):
-            if np.sum(Data_over_cropped[0,:,:,f] == 2) >= 1:
+            if np.sum(Data_over_cropped[0, :, :, f] == 2) >= 1:
                 Tumor_slices += 1
             else:
                 Non_Tumor_Slices += 1
 
-            if np.sum(Data_over_cropped[0,:,:,f] == 1) >= 1:
+            if np.sum(Data_over_cropped[0, :, :, f] == 1) >= 1:
                 Prostate_slices += 1
             else:
                 Non_Prostate_Slices += 1
@@ -569,48 +637,48 @@ def get_oversampling(Data, train_idx, Batch_Size, patch_size):
         if np.sum(Data_over_cropped == 2) >= 1:
             Pos_Patient += 1
 
+        print("Tumor", Tumor_slices)
+        print("Non_Tumor", Non_Tumor_Slices)
+        print("Pos_Patients", Pos_Patient)
 
-        print 'Tumor', Tumor_slices
-        print 'Non_Tumor', Non_Tumor_Slices
-        print 'Pos_Patients', Pos_Patient
-
-        print 'Prostate', Prostate_slices
-        print 'Non_Prostate_Slices', Non_Prostate_Slices
-
-
+        print("Prostate", Prostate_slices)
+        print("Non_Prostate_Slices", Non_Prostate_Slices)
 
     print(Tumor_slices, Non_Tumor_Slices)
 
-
     Probability_Pos_Patient = Pos_Patient / np.float(Total_Patients)
 
-    print 'Probability_Pos_Patient', Probability_Pos_Patient
+    print("Probability_Pos_Patient", Probability_Pos_Patient)
 
     Slices_total = Tumor_slices + Non_Tumor_Slices
 
-    Natural_probability_tu_slice = Tumor_slices/ np.float(Slices_total)
+    Natural_probability_tu_slice = Tumor_slices / np.float(Slices_total)
 
     Natural_probability_Prostate_slice = Prostate_slices / np.float(Slices_total)
 
-    print 'Natural_probability_tu_slice', Natural_probability_tu_slice
-    print 'Natural_probability_PRO_slice', Natural_probability_Prostate_slice
+    print("Natural_probability_tu_slice", Natural_probability_tu_slice)
+    print("Natural_probability_PRO_slice", Natural_probability_Prostate_slice)
 
-    Oversampling_Factor = (Natural_probability_tu_slice ** (1/np.float(Batch_Size * Probability_Pos_Patient)))
+    Oversampling_Factor = Natural_probability_tu_slice ** (
+        1 / np.float(Batch_Size * Probability_Pos_Patient)
+    )
 
-    print 'oversampling_factor', Oversampling_Factor
+    print("oversampling_factor", Oversampling_Factor)
 
-    return (Oversampling_Factor), Slices_total, Natural_probability_tu_slice, Natural_probability_Prostate_slice
-
-
+    return (
+        (Oversampling_Factor),
+        Slices_total,
+        Natural_probability_tu_slice,
+        Natural_probability_Prostate_slice,
+    )
 
 
 def split_training(IDs, len_val, cv, cv_runs):
-
     runs = cv_runs / 4
     for s in range(runs):
         if cv in range(s * 4, s * 4 + 4):
             count = s
-    print count
+    print(count)
 
     np.random.seed(42 + count)
 
@@ -619,7 +687,7 @@ def split_training(IDs, len_val, cv, cv_runs):
 
     factor = cv - count * 4
 
-    print factor
+    print(factor)
     lower_limit = len_val * factor
     print(lower_limit)
 
@@ -635,8 +703,7 @@ def split_training(IDs, len_val, cv, cv_runs):
     return train_idx, val_idx
 
 
-def save(Image, OutputFilePath, Mask = False):
-
+def save(Image, OutputFilePath, Mask=False):
     if Mask == True:
         sitk.WriteImage(sitk.Cast(Image, sitk.sitkUInt8), OutputFilePath)
     else:
@@ -646,5 +713,5 @@ def save(Image, OutputFilePath, Mask = False):
     finalImg = sitk.GetArrayFromImage(finalImg)
     finalImg = finalImg.swapaxes(0, 2)
     finalImg_data, finalImg_options = nrrd.read(OutputFilePath)
-    finalImg_options['encoding'] = 'gzip'
+    finalImg_options["encoding"] = "gzip"
     nrrd.write(OutputFilePath, finalImg, header=finalImg_options)

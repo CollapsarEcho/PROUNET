@@ -90,7 +90,7 @@ def main():
         , ADC_mean, ADC_std, BVAL_mean, BVAL_std, T2_mean, T2_std \
         = get_class_frequencies(Data, train_idx, patch_size=args.patch_size)
 
-    print ADC_mean, ADC_std, BVAL_mean, BVAL_std, T2_mean, T2_std
+    print(ADC_mean, ADC_std, BVAL_mean, BVAL_std, T2_mean, T2_std)
 
     print('ADC', Tumor_frequencie_ADC, Prostate_frequencie_ADC, Background_frequencie_ADC)
     print('T2', Tumor_frequencie_T2, Prostate_frequencie_T2, Background_frequencie_T2)
@@ -98,8 +98,8 @@ def main():
     all_ADC = np.float(Background_frequencie_ADC + Prostate_frequencie_ADC + Tumor_frequencie_ADC)
     all_T2 = np.float(Background_frequencie_T2 + Prostate_frequencie_T2 + Tumor_frequencie_T2)
 
-    print all_ADC
-    print all_T2
+    print(all_ADC)
+    print(all_T2)
 
     W1_ADC = 1 / (Background_frequencie_ADC / all_ADC) ** 0.25
     W2_ADC = 1 / (Prostate_frequencie_ADC / all_ADC) ** 0.25
@@ -109,7 +109,7 @@ def main():
     Wb_ADC = W2_ADC / (W1_ADC + W2_ADC + W3_ADC)
     Wc_ADC = W3_ADC / (W1_ADC + W2_ADC + W3_ADC)
 
-    print 'Weights ADC', Wa_ADC, Wb_ADC, Wc_ADC
+    print('Weights ADC', Wa_ADC, Wb_ADC, Wc_ADC)
 
     weight_ADC = (Wa_ADC, Wb_ADC, Wc_ADC)
 
@@ -121,7 +121,7 @@ def main():
     Wb_T2 = W2_T2 / (W1_T2 + W2_T2 + W3_T2)
     Wc_T2 = W3_T2 / (W1_T2 + W2_T2 + W3_T2)
 
-    print 'Weights T2', Wa_T2, Wb_T2, Wc_T2
+    print('Weights T2', Wa_T2, Wb_T2, Wc_T2)
 
     weight_T2 = (Wa_T2, Wb_T2, Wc_T2)
 
@@ -166,7 +166,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
