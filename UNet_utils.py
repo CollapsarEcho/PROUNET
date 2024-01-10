@@ -18,23 +18,24 @@
 
 __author__ = "German Cancer Research Center (DKFZ)"
 
-import pandas as pd
 import os
-import SimpleITK as sitk
-from batchgenerators.dataloading.multi_threaded_augmenter import MultiThreadedAugmenter
-from batchgenerators.dataloading.data_loader import DataLoaderBase
+import shutil
 from builtins import object
+
+import nrrd
+import numpy as np
+import pandas as pd
+import SimpleITK as sitk
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import torch
-import shutil
-import nrrd
 from batchgenerators.augmentations.crop_and_pad_augmentations import center_crop
+from batchgenerators.augmentations.normalizations import cut_off_outliers
+from batchgenerators.dataloading.data_loader import DataLoaderBase
+from batchgenerators.dataloading.multi_threaded_augmenter import MultiThreadedAugmenter
 from batchgenerators.transforms.sample_normalization_transforms import (
     CutOffOutliersTransform,
 )
-from batchgenerators.augmentations.normalizations import cut_off_outliers
 
 
 class CrossEntropyLoss2d(nn.Module):
