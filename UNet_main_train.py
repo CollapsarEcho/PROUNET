@@ -81,8 +81,13 @@ def main():
 
 
     # create train, test split, return the indices, patients in test_split wont be seen during whole training
-    train_idx, val_idx, test_idx = CreateTrainValTestSplit(HistoFile_path=args.input_file, num_splits=args.num_splits, num_test_folds=args.num_test_folds,
-                                        num_val_folds=args.num_val_folds, seed=args.seed)
+    train_idx, val_idx, test_idx = CreateTrainValTestSplit(
+        HistoFile_path=args.input_file, 
+        num_splits=args.num_splits, 
+        num_test_folds=args.num_test_folds,
+        num_val_folds=args.num_val_folds, 
+        seed=args.seed
+    )
 
     IDs = train_idx + val_idx
 

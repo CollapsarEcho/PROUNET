@@ -16,7 +16,7 @@
 
 #    contact: David Bonekamp, MD, d.bonekamp@dkfz-heidelberg.de
 
-__author__  = "German Cancer Research Center (DKFZ)"
+__author__ = "German Cancer Research Center (DKFZ)"
 
 
 import torch
@@ -27,7 +27,8 @@ import torch.nn.functional as F
 
 BN_EPS = 1e-5
 
-class UNetPytorch (nn.Module):
+
+class UNetPytorch(nn.Module):
     def __init__(self, in_shape):
         super(UNetPytorch, self).__init__()
         C, H, W = in_shape
@@ -41,7 +42,8 @@ class UNetPytorch (nn.Module):
         self.center = nn.Sequential(
             ConvRelu2d(1024, 1024, kernel_size=3, padding=1, stride=1),
             ConvRelu2d(1024, 1024, kernel_size=3, padding=1, stride=1),
-            ConvRelu2d(1024, 1024, kernel_size=3, padding=1, stride=1))
+            ConvRelu2d(1024, 1024, kernel_size=3, padding=1, stride=1),
+        )
 
         self.up6 = StackDecoder(1024, 1024, 512, kernel_size=3)
         self.up5 = StackDecoder(512, 512, 256, kernel_size=3)
@@ -50,7 +52,6 @@ class UNetPytorch (nn.Module):
         self.up2 = StackDecoder(64, 64, 32, kernel_size=3)
 
         self.classify = nn.Conv2d(32, 3, kernel_size=1, padding=0, stride=1, bias=True)
-
 
     def forward(self, input):
         out = input
@@ -76,29 +77,79 @@ class UNetPytorch (nn.Module):
 
 
 class ConvRelu2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, dilation=1, stride=1, groups=1, is_relu=True, is_bn=True):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=3,
+        padding=1,
+        dilation=1,
+        stride=1,
+        groups=1,
+        is_relu=True,
+        is_bn=True,
+    ):
         super(ConvRelu2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation, groups=groups, bias=False)
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            padding=padding,
+            stride=stride,
+            dilation=dilation,
+            groups=groups,
+            bias=False,
+        )
         self.relu = nn.ReLU(inplace=True)
         self.bn = nn.BatchNorm2d(out_channels, eps=BN_EPS)
-        if is_relu is False: self.relu = None
-        if is_bn is False: self.bn = None
+        if is_relu is False:
+            self.relu = None
+        if is_bn is False:
+            self.bn = None
 
     def forward(self, input):
         convoluted = self.conv(input)
-        if self.relu is not None: convoluted = self.relu(convoluted)
-        if self.bn is not None: convoluted = self.bn(convoluted)
+        if self.relu is not None:
+            convoluted = self.relu(convoluted)
+        if self.bn is not None:
+            convoluted = self.bn(convoluted)
         return convoluted
 
-class StackEncoder (nn.Module):
+
+class StackEncoder(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super(StackEncoder, self).__init__()
-        padding=(kernel_size-1)//2
+        padding = (kernel_size - 1) // 2
 
         self.encode = nn.Sequential(
-            ConvRelu2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=1, stride=1, groups=1),
-            ConvRelu2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=1, stride=1, groups=1),
-            ConvRelu2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=1, stride=1, groups=1))
+            ConvRelu2d(
+                in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=1,
+                stride=1,
+                groups=1,
+            ),
+            ConvRelu2d(
+                out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=1,
+                stride=1,
+                groups=1,
+            ),
+            ConvRelu2d(
+                out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=1,
+                stride=1,
+                groups=1,
+            ),
+        )
 
     def forward(self, input):
         encoded = self.encode(input)
@@ -107,20 +158,46 @@ class StackEncoder (nn.Module):
         return encoded, max_pooled
 
 
-class StackDecoder (nn.Module):
+class StackDecoder(nn.Module):
     def __init__(self, in_channels_down, in_channels, out_channels, kernel_size=3):
         super(StackDecoder, self).__init__()
-        padding=(kernel_size-1)//2
+        padding = (kernel_size - 1) // 2
 
         self.decode = nn.Sequential(
-            ConvRelu2d(in_channels_down + in_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=1, stride=1, groups=1),
-            ConvRelu2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=1, stride=1, groups=1),
-            ConvRelu2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=1, stride=1, groups=1))
+            ConvRelu2d(
+                in_channels_down + in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=1,
+                stride=1,
+                groups=1,
+            ),
+            ConvRelu2d(
+                out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=1,
+                stride=1,
+                groups=1,
+            ),
+            ConvRelu2d(
+                out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=1,
+                stride=1,
+                groups=1,
+            ),
+        )
 
     def forward(self, down_input, input):
         N, C, H, W = down_input.size()
-        upsampled = F.interpolate(input, size=(H,W) ,mode='bilinear', align_corners=True)
+        upsampled = F.interpolate(
+            input, size=(H, W), mode="bilinear", align_corners=True
+        )
         upsampled = torch.cat([upsampled, down_input], 1)
         decoded = self.decode(upsampled)
         return decoded
-
