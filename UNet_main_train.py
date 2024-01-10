@@ -337,6 +337,7 @@ def main():
                 )
                 Center_Crop = CenterCropTransform(args.patch_size)
 
+            # start training
             train_loader = BatchGenerator(
                 Data,
                 BATCH_SIZE=args.b,
