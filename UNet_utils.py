@@ -405,21 +405,27 @@ class BatchGenerator(DataLoaderBase):
                 pass
 
         else:
-            idx = np.random.choice(self._split_idx, self.BATCH_SIZE, False, None)
+            idx = np.random.choice(self._split_idx, self.BATCH_SIZE, False, None)  # select BATCH_SIZE random patients from training set
             img = np.empty((self.BATCH_SIZE, channels_img, img_size, img_size))
             label = np.empty((self.BATCH_SIZE, channels_label, img_size, img_size))
 
             for b in range(self.BATCH_SIZE):
+                # select the bth patient from the batch
                 if self._ProbabilityTumorSlices is not None:
                     LabelData = self._data[idx[b]]["label"]
                     z_dim = self._data[idx[b]]["image"].shape[3]
+                    
                     CancerSlices = []
                     for Slice in range(z_dim):
                         bool = np.where(LabelData[:, :, :, Slice] == 2, True, False)
 
                         if bool.any() == True:
                             CancerSlices.append(Slice)
-
+                    
+                    '''self._ProbabilityTumorSlices 
+                    Oversampling_Factor = Natural_probability_tu_slice ** (
+                    1 / np.float(Batch_Size * Probability_Pos_Patient))
+                    '''
                     if sum(CancerSlices) is not 0:
                         CancerSlices = np.array(CancerSlices)
                         totalTumorSliceProb = float(self._ProbabilityTumorSlices)
@@ -427,7 +433,7 @@ class BatchGenerator(DataLoaderBase):
 
                         ProbabilityMap = np.array(np.zeros(z_dim))
                         ProbabilityMap[
-                            CancerSlices
+                            CancerSlices  # comes from label data
                         ] = self._ProbabilityTumorSlices / float(len(CancerSlices))
 
                         NoTumorSlices = float(z_dim - len(CancerSlices))
@@ -452,6 +458,7 @@ class BatchGenerator(DataLoaderBase):
 
                 randint = np.random.choice(z_dim, p=ProbabilityMap)
 
+                #NOTE: why choose along y axis?
                 img[b, :, :, :] = self._data[idx[b]]["image"][:, :, :, randint]
                 label[b, :, :, :] = self._data[idx[b]]["label"][:, :, :, randint]
 

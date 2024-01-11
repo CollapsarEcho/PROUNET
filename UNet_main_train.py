@@ -99,18 +99,19 @@ parser.add_argument("--cv_end", default=16, type=int, help="")
 
 
 def main():
-    # assign global args
+    # ************************ 1. assign global args
     global args
     args = parser.parse_args()
 
-    # make a folder for the experiment
+    # ************************ 2.1 make a folder for the experiment
     general_folder_name = args.output_path
     try:
         os.mkdir(general_folder_name)
     except OSError:
         pass
 
-    # create train, test split, return the indices, patients in test_split wont be seen during whole training
+    # ************************ 2.2 create train, test split, return the indices 
+    #                              patients in test_split wont be seen during whole training
     train_idx, val_idx, test_idx = CreateTrainValTestSplit(
         HistoFile_path=args.input_file,
         num_splits=args.num_splits,
@@ -125,22 +126,22 @@ def main():
     print("size of validation set {}".format(len(val_idx)))
     print("size of test set {}".format(len(test_idx)))
 
-    # data loading
+    # ************************ 2.3 data loading
     Data = ProstataData(args.input_file)  # For details on this class see README
 
-    # train and validate
+    # ************************ 3. train and validate
     for cv in range(args.cv_start, args.cv_end):
         best_epoch = 0
         train_loss = []
         val_loss = []
 
-        # define patients for training and validation
+        # ************************ 3.1 define patients for training and validation
         train_idx, val_idx = split_training(
             IDs, len_val=62, cv=cv, cv_runs=args.cv_number
         )
 
         (
-            oversampling_factor,
+            oversampling_factor,  # Probability of Tumor Slices
             Slices_total,
             Natural_probability_tu_slice,
             Natural_probability_PRO_slice,
@@ -160,7 +161,7 @@ def main():
         print("train_idx", train_idx, len(train_idx))
         print("val_idx", val_idx, len(val_idx))
 
-        # get class frequencies
+        # ************************ 3.2 get class frequencies and calculate weights
         print(ADC_mean, ADC_std, BVAL_mean, BVAL_std, T2_mean, T2_std)
 
         print(
@@ -207,7 +208,7 @@ def main():
 
         weight_T2 = (Wa_T2, Wb_T2, Wc_T2)
 
-        # define model
+        # ************************ 3.3 define model
         Net = UNetPytorch(in_shape=(3, args.patch_size[0], args.patch_size[1]))
         Net_Name = "UNetPytorch"
         model = Net.cuda()
@@ -228,7 +229,7 @@ def main():
 
         checkpoint_file = folder_name + "/checkpoint_" + "{}.pth.tar".format(Net_Name)
 
-        # augmentation
+        # ************************ 3.4 data augmentation
         for epoch in range(args.epochs):
             torch.manual_seed(args.seed + epoch + cv)
             np.random.seed(epoch + cv)
@@ -337,7 +338,7 @@ def main():
                 )
                 Center_Crop = CenterCropTransform(args.patch_size)
 
-            # start training
+            # ************************ 3.5 start training
             train_loader = BatchGenerator(
                 Data,
                 BATCH_SIZE=args.b,
