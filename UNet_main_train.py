@@ -99,18 +99,18 @@ parser.add_argument("--cv_end", default=16, type=int, help="")
 
 
 def main():
-    # ************************ 1. assign global args
+    # --------------------------- 1. assign global args -------------------------- #
     global args
     args = parser.parse_args()
 
-    # ************************ 2.1 make a folder for the experiment
+    # ------------------- 2.1 make a folder for the experiment ------------------- #
     general_folder_name = args.output_path
     try:
         os.mkdir(general_folder_name)
     except OSError:
         pass
 
-    # ************************ 2.2 create train, test split, return the indices 
+    # ------------- 2.2 create train, test split, return the indices ------------- #
     #                              patients in test_split wont be seen during whole training
     train_idx, val_idx, test_idx = CreateTrainValTestSplit(
         HistoFile_path=args.input_file,
@@ -126,16 +126,16 @@ def main():
     print("size of validation set {}".format(len(val_idx)))
     print("size of test set {}".format(len(test_idx)))
 
-    # ************************ 2.3 data loading
+    # ----------------------------- 2.3 data loading ----------------------------- #
     Data = ProstataData(args.input_file)  # For details on this class see README
 
-    # ************************ 3. train and validate
+    # --------------------------- 3. train and validate -------------------------- #
     for cv in range(args.cv_start, args.cv_end):
         best_epoch = 0
         train_loss = []
         val_loss = []
 
-        # ************************ 3.1 define patients for training and validation
+        # -------------- 3.1 define patients for training and validation ------------- #
         train_idx, val_idx = split_training(
             IDs, len_val=62, cv=cv, cv_runs=args.cv_number
         )
@@ -229,7 +229,7 @@ def main():
 
         checkpoint_file = folder_name + "/checkpoint_" + "{}.pth.tar".format(Net_Name)
 
-        # ************************ 3.4 data augmentation
+        # --------------------------- 3.4 data augmentation -------------------------- #
         for epoch in range(args.epochs):
             torch.manual_seed(args.seed + epoch + cv)
             np.random.seed(epoch + cv)
@@ -338,7 +338,7 @@ def main():
                 )
                 Center_Crop = CenterCropTransform(args.patch_size)
 
-            # ************************ 3.5 start training
+            # ---------------------------- 3.5 start training ---------------------------- #
             train_loader = BatchGenerator(
                 Data,
                 BATCH_SIZE=args.b,
